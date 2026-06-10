@@ -107,7 +107,18 @@ class ScanTaskIterable implements CloseableIterable<FileScanTask> {
   }
 
   @Override
-  public void close() throws IOException {}
+  public void close() throws IOException {
+    if (shutdown.compareAndSet(false, true)) {
+      LOG.info(
+          "ScanTaskIterable is closing. Clearing {} queued tasks, {} plan tasks, and {} initial file scan tasks.",
+          taskQueue.size(),
+          planTasks.size(),
+          initialFileScanTasks.size());
+      taskQueue.clear();
+      planTasks.clear();
+      initialFileScanTasks.clear();
+    }
+  }
 
   private class PlanTaskWorker implements Runnable {
 
@@ -278,13 +289,11 @@ class ScanTaskIterable implements CloseableIterable<FileScanTask> {
 
     @Override
     public void close() {
-      shutdown.set(true);
-      LOG.info(
-          "ScanTasksIterator is closing. Clearing {} queued tasks and {} plan tasks.",
-          taskQueue.size(),
-          planTasks.size());
-      taskQueue.clear();
-      planTasks.clear();
+      try {
+        ScanTaskIterable.this.close();
+      } catch (IOException e) {
+        LOG.error("Failed to cleanly close ScanTaskIterable source", e);
+      }
     }
   }
 }
